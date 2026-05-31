@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 Vec3 = tuple[float, float, float]
+Vec2 = tuple[float, float]
 ColorRGBA = tuple[float, float, float, float]
 
 
@@ -15,6 +16,9 @@ class Material:
     metallic: float = 0.0
     roughness: float = 0.82
     double_sided: bool = True
+    base_color_texture: str | None = None
+    normal_texture: str | None = None
+    normal_scale: float = 0.55
 
 
 def v_add(a: Vec3, b: Vec3) -> Vec3:
@@ -71,6 +75,7 @@ class SceneMesh:
         self.name = name
         self.positions: list[Vec3] = []
         self.normals: list[Vec3] = []
+        self.texcoords: list[Vec2] = []
         self.materials: list[Material] = []
         self.indices_by_material: dict[int, list[int]] = {}
         self._material_lookup: dict[str, int] = {}
@@ -83,6 +88,9 @@ class SceneMesh:
         metallic: float = 0.0,
         roughness: float = 0.82,
         double_sided: bool = True,
+        base_color_texture: str | None = None,
+        normal_texture: str | None = None,
+        normal_scale: float = 0.55,
     ) -> int:
         if name in self._material_lookup:
             return self._material_lookup[name]
@@ -95,16 +103,20 @@ class SceneMesh:
                 metallic=metallic,
                 roughness=roughness,
                 double_sided=double_sided,
+                base_color_texture=base_color_texture,
+                normal_texture=normal_texture,
+                normal_scale=normal_scale,
             )
         )
         self.indices_by_material[index] = []
         self._material_lookup[name] = index
         return index
 
-    def _push_vertex(self, position: Vec3, normal: Vec3) -> int:
+    def _push_vertex(self, position: Vec3, normal: Vec3, uv: Vec2 | None = None) -> int:
         index = len(self.positions)
         self.positions.append(position)
         self.normals.append(normal)
+        self.texcoords.append(uv or (0.0, 0.0))
         return index
 
     def add_triangle(self, p0: Vec3, p1: Vec3, p2: Vec3, material: int, normal: Vec3 | None = None) -> None:
@@ -119,6 +131,7 @@ class SceneMesh:
         base = len(self.positions)
         self.positions.extend([p0, p1, p2, p3])
         self.normals.extend([n, n, n, n])
+        self.texcoords.extend([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
         self.indices_by_material[material].extend([base, base + 1, base + 2, base, base + 2, base + 3])
 
     def add_box(
@@ -307,6 +320,8 @@ class SceneMesh:
             raise ValueError("Scene rỗng: chưa có vertex nào.")
         if len(self.positions) != len(self.normals):
             raise ValueError("positions và normals phải có cùng độ dài.")
+        if self.texcoords and len(self.texcoords) != len(self.positions):
+            raise ValueError("texcoords phải rỗng hoặc có cùng độ dài với positions.")
         used_indices = [i for group in self.indices_by_material.values() for i in group]
         if not used_indices:
             raise ValueError("Scene chưa có tam giác nào.")

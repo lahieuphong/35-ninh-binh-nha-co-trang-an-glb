@@ -1,14 +1,35 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from random import Random
 
 from glb_forge.scene import SceneMesh, Vec3, v_add, v_cross, v_dot, v_len, v_lerp, v_mul, v_norm, v_sub
-
+from glb_forge.trees import (
+    TreeMaterials,
+    _add_hanging_leaf_curtains,
+    _add_irregular_ellipsoid,
+    _add_lakeside_infill_tree,
+    _add_leaf_diamond,
+    _add_loc_vung_tree,
+    _add_organic_shrub,
+)
 
 # Scene này dùng Y-up:
 # x = trái/phải, y = cao/thấp, z = trước/sau.
 # Phía trước nhà nằm ở z âm, nền cảnh quan/núi nằm ở z dương.
+
+
+TexturePair = tuple[str | None, str | None]
+MaterialMap = dict[str, int | list[int] | TreeMaterials]
+
+TEXTURE_ROOT = Path(__file__).resolve().parents[3] / "assets" / "textures" / "nha_co_trang_an"
+
+
+def _texture_path(filename: str | None) -> str | None:
+    if filename is None:
+        return None
+    return str(TEXTURE_ROOT / filename)
 
 
 def create_trang_an_house(seed: int = 42) -> SceneMesh:
@@ -39,68 +60,287 @@ def create_trang_an_house(seed: int = 42) -> SceneMesh:
     return scene
 
 
-def _make_materials(scene: SceneMesh) -> dict[str, int | list[int]]:
-    materials: dict[str, int | list[int]] = {}
+def _make_materials(scene: SceneMesh) -> MaterialMap:
+    """Tạo material theo barem file 1: mỗi vật liệu chính có baseColor + normal texture.
 
-    materials["earth"] = scene.add_material("warm earth base", (0.45, 0.34, 0.23, 1.0), roughness=0.95)
+    Texture dùng ảnh procedural tự sinh trong assets/textures/nha_co_trang_an/.
+    Không nhúng ảnh báo/ảnh web để tránh vấn đề bản quyền; màu và loại vật liệu được
+    chọn theo tư liệu về nhà cổ Tràng An: gỗ lim, mái ngói vảy, nền/cột đá, sân gạch
+    đỏ, rêu và cảnh quan núi đá vôi.
+    """
+    materials: MaterialMap = {}
+
+    earth_tex = _texture_path("warm_earth_basecolor.png")
+    earth_nrm = _texture_path("warm_earth_normal.png")
+    wood_tex = _texture_path("old_lim_wood_basecolor.png")
+    wood_nrm = _texture_path("old_lim_wood_normal.png")
+    stone_tex = _texture_path("limestone_wall_basecolor.png")
+    stone_nrm = _texture_path("limestone_wall_normal.png")
+    roof_tex = _texture_path("fishscale_roof_tile_basecolor.png")
+    roof_nrm = _texture_path("fishscale_roof_tile_normal.png")
+    brick_tex = _texture_path("courtyard_brick_basecolor.png")
+    brick_nrm = _texture_path("courtyard_brick_normal.png")
+    mortar_tex = _texture_path("dark_mortar_basecolor.png")
+    mortar_nrm = _texture_path("dark_mortar_normal.png")
+    moss_tex = _texture_path("moss_basecolor.png")
+    moss_nrm = _texture_path("moss_normal.png")
+    leaf_tex = _texture_path("village_leaf_basecolor.png")
+    leaf_nrm = _texture_path("village_leaf_normal.png")
+    bamboo_tex = _texture_path("bamboo_basecolor.png")
+    bamboo_nrm = _texture_path("bamboo_normal.png")
+    bamboo_fence_tex = _texture_path("bamboo_fence_basecolor.png")
+    bamboo_fence_nrm = _texture_path("bamboo_fence_normal.png")
+    jar_tex = _texture_path("ceramic_jar_basecolor.png")
+    jar_nrm = _texture_path("ceramic_jar_normal.png")
+    underside_tex = _texture_path("display_underside_basecolor.png")
+    underside_nrm = _texture_path("display_underside_normal.png")
+
+    materials["earth"] = scene.add_material(
+        "warm earth base",
+        (0.55, 0.46, 0.36, 1.0),
+        roughness=0.96,
+        base_color_texture=earth_tex,
+        normal_texture=earth_nrm,
+        normal_scale=0.42,
+    )
     materials["shadow"] = scene.add_material("dark interior shadow", (0.015, 0.012, 0.009, 1.0), roughness=1.0)
+    materials["plinth_bottom"] = scene.add_material(
+        "warm brown orange compact earth underside",
+        (0.96, 0.82, 0.62, 1.0),
+        roughness=0.96,
+        base_color_texture=underside_tex,
+        normal_texture=underside_nrm,
+        normal_scale=0.34,
+    )
 
-    materials["wood_dark"] = scene.add_material("old dark lim wood", (0.25, 0.12, 0.045, 1.0), roughness=0.86)
-    materials["wood"] = scene.add_material("aged brown wood", (0.42, 0.22, 0.09, 1.0), roughness=0.82)
-    materials["wood_light"] = scene.add_material("worn golden wood edge", (0.58, 0.34, 0.14, 1.0), roughness=0.78)
-    materials["wood_black"] = scene.add_material("nearly black carved wood", (0.08, 0.035, 0.014, 1.0), roughness=0.9)
+    materials["wood_dark"] = scene.add_material(
+        "old dark lim wood",
+        (0.48, 0.36, 0.27, 1.0),
+        roughness=0.88,
+        base_color_texture=wood_tex,
+        normal_texture=wood_nrm,
+        normal_scale=0.72,
+    )
+    materials["wood"] = scene.add_material(
+        "aged brown wood",
+        (0.72, 0.55, 0.42, 1.0),
+        roughness=0.84,
+        base_color_texture=wood_tex,
+        normal_texture=wood_nrm,
+        normal_scale=0.66,
+    )
+    materials["wood_light"] = scene.add_material(
+        "worn golden wood edge",
+        (0.93, 0.72, 0.50, 1.0),
+        roughness=0.80,
+        base_color_texture=wood_tex,
+        normal_texture=wood_nrm,
+        normal_scale=0.50,
+    )
+    materials["wood_black"] = scene.add_material(
+        "nearly black carved wood",
+        (0.26, 0.20, 0.16, 1.0),
+        roughness=0.92,
+        base_color_texture=wood_tex,
+        normal_texture=wood_nrm,
+        normal_scale=0.80,
+    )
 
-    materials["stone"] = scene.add_material("old grey limestone", (0.45, 0.45, 0.40, 1.0), roughness=0.92)
-    materials["stone_dark"] = scene.add_material("dark stone gaps", (0.20, 0.21, 0.19, 1.0), roughness=0.96)
-    materials["stone_light"] = scene.add_material("light worn stone edge", (0.63, 0.62, 0.56, 1.0), roughness=0.88)
+    materials["stone"] = scene.add_material(
+        "old grey limestone",
+        (0.66, 0.64, 0.58, 1.0),
+        roughness=0.94,
+        base_color_texture=stone_tex,
+        normal_texture=stone_nrm,
+        normal_scale=0.65,
+    )
+    materials["stone_dark"] = scene.add_material(
+        "dark stone gaps",
+        (0.36, 0.36, 0.32, 1.0),
+        roughness=0.98,
+        base_color_texture=stone_tex,
+        normal_texture=stone_nrm,
+        normal_scale=0.82,
+    )
+    materials["stone_light"] = scene.add_material(
+        "light worn stone edge",
+        (0.88, 0.85, 0.76, 1.0),
+        roughness=0.90,
+        base_color_texture=stone_tex,
+        normal_texture=stone_nrm,
+        normal_scale=0.46,
+    )
 
-    materials["moss"] = scene.add_material("soft green moss", (0.10, 0.30, 0.07, 1.0), roughness=0.96)
-    materials["leaf"] = scene.add_material("deep village green leaves", (0.10, 0.36, 0.07, 1.0), roughness=0.9)
-    materials["leaf_light"] = scene.add_material("young leaf highlights", (0.25, 0.55, 0.12, 1.0), roughness=0.9)
-    materials["bamboo"] = scene.add_material("dry bamboo", (0.64, 0.45, 0.20, 1.0), roughness=0.88)
-    materials["jar"] = scene.add_material("old brown ceramic jar", (0.48, 0.20, 0.08, 1.0), roughness=0.72)
-    materials["jar_dark"] = scene.add_material("dark jar mouth", (0.06, 0.03, 0.015, 1.0), roughness=0.95)
+    materials["moss"] = scene.add_material(
+        "soft green moss",
+        (0.72, 0.90, 0.62, 1.0),
+        roughness=0.98,
+        base_color_texture=moss_tex,
+        normal_texture=moss_nrm,
+        normal_scale=0.55,
+    )
+    materials["leaf"] = scene.add_material(
+        "deep village green leaves",
+        (0.42, 0.70, 0.30, 1.0),
+        roughness=0.94,
+        base_color_texture=leaf_tex,
+        normal_texture=leaf_nrm,
+        normal_scale=0.46,
+    )
+    materials["leaf_light"] = scene.add_material(
+        "soft young leaf highlights",
+        (0.62, 0.86, 0.38, 1.0),
+        roughness=0.92,
+        base_color_texture=leaf_tex,
+        normal_texture=leaf_nrm,
+        normal_scale=0.40,
+    )
+    materials["leaf_dark"] = scene.add_material(
+        "soft shaded village foliage",
+        (0.26, 0.46, 0.18, 1.0),
+        roughness=0.96,
+        base_color_texture=leaf_tex,
+        normal_texture=leaf_nrm,
+        normal_scale=0.48,
+    )
+    materials["leaf_sunlit"] = scene.add_material(
+        "soft sunlit leaf clusters",
+        (0.74, 0.90, 0.44, 1.0),
+        roughness=0.91,
+        base_color_texture=leaf_tex,
+        normal_texture=leaf_nrm,
+        normal_scale=0.36,
+    )
+    materials["bamboo"] = scene.add_material(
+        "dry bamboo",
+        (0.92, 0.78, 0.48, 1.0),
+        roughness=0.90,
+        base_color_texture=bamboo_tex,
+        normal_texture=bamboo_nrm,
+        normal_scale=0.58,
+    )
+    materials["bamboo_fence"] = scene.add_material(
+        "aged darker bamboo fence",
+        (0.88, 0.74, 0.42, 1.0),
+        roughness=0.92,
+        base_color_texture=bamboo_fence_tex,
+        normal_texture=bamboo_fence_nrm,
+        normal_scale=0.66,
+    )
+    materials["jar"] = scene.add_material(
+        "old countryside brown ceramic water jar",
+        (0.58, 0.30, 0.17, 1.0),
+        roughness=0.84,
+        base_color_texture=jar_tex,
+        normal_texture=jar_nrm,
+        normal_scale=0.48,
+    )
+    materials["jar_dark"] = scene.add_material(
+        "dark jar mouth and aged raised bands",
+        (0.18, 0.11, 0.08, 1.0),
+        roughness=0.97,
+        base_color_texture=jar_tex,
+        normal_texture=jar_nrm,
+        normal_scale=0.42,
+    )
+    materials["jar_water"] = scene.add_material(
+        "dark still rain water inside jar",
+        (0.07, 0.095, 0.090, 0.82),
+        metallic=0.0,
+        roughness=0.38,
+        double_sided=True,
+    )
+    materials["base_under"] = scene.add_material(
+        "brown orange earth backing without green spots",
+        (0.90, 0.74, 0.54, 1.0),
+        roughness=0.96,
+        base_color_texture=underside_tex,
+        normal_texture=underside_nrm,
+        normal_scale=0.30,
+    )
+    materials["base_edge"] = scene.add_material(
+        "neat dark display base edge",
+        (0.22, 0.15, 0.10, 1.0),
+        roughness=0.94,
+        base_color_texture=wood_tex,
+        normal_texture=wood_nrm,
+        normal_scale=0.42,
+    )
 
-    materials["roof_base"] = scene.add_material("old red brown roof base", (0.42, 0.13, 0.045, 1.0), roughness=0.9)
+    materials["roof_base"] = scene.add_material(
+        "old red brown roof base slightly muted",
+        (0.66, 0.39, 0.29, 1.0),
+        roughness=0.92,
+        base_color_texture=roof_tex,
+        normal_texture=roof_nrm,
+        normal_scale=0.64,
+    )
     roof_variants: list[int] = []
-    roof_colors = [
-        (0.46, 0.15, 0.055, 1.0),
-        (0.56, 0.20, 0.075, 1.0),
-        (0.36, 0.10, 0.040, 1.0),
-        (0.64, 0.26, 0.090, 1.0),
-        (0.31, 0.085, 0.035, 1.0),
-        (0.50, 0.18, 0.065, 1.0),
-        (0.42, 0.19, 0.085, 1.0),
-        (0.62, 0.30, 0.12, 1.0),
+    # Hệ số tint sáng/tối khác nhau nhưng cùng dùng texture mái ngói vảy.
+    roof_tints = [
+        (0.76, 0.47, 0.35, 1.0),
+        (0.85, 0.52, 0.39, 1.0),
+        (0.63, 0.36, 0.28, 1.0),
+        (0.91, 0.60, 0.43, 1.0),
+        (0.56, 0.32, 0.25, 1.0),
+        (0.79, 0.48, 0.35, 1.0),
+        (0.72, 0.45, 0.33, 1.0),
+        (0.88, 0.61, 0.45, 1.0),
     ]
-    for i, color in enumerate(roof_colors):
-        roof_variants.append(scene.add_material(f"individual roof tile {i + 1}", color, roughness=0.94))
+    for i, color in enumerate(roof_tints):
+        roof_variants.append(
+            scene.add_material(
+                f"individual roof tile {i + 1}",
+                color,
+                roughness=0.95,
+                base_color_texture=roof_tex,
+                normal_texture=roof_nrm,
+                normal_scale=0.74,
+            )
+        )
     materials["roof_tiles"] = roof_variants
 
     brick_variants: list[int] = []
-    brick_colors = [
-        (0.55, 0.22, 0.11, 1.0),
-        (0.63, 0.27, 0.13, 1.0),
-        (0.45, 0.16, 0.08, 1.0),
-        (0.70, 0.34, 0.16, 1.0),
-        (0.50, 0.20, 0.10, 1.0),
+    # Bản v6: sân giữ họ màu từ mái ngói nhưng kéo về cam đất nung,
+    # bớt hồng và không đậm đỏ như mái.
+    brick_tints = [
+        (1.00, 0.96, 0.84, 1.0),
+        (0.98, 0.93, 0.80, 1.0),
+        (0.94, 0.90, 0.78, 1.0),
+        (1.00, 0.98, 0.86, 1.0),
+        (0.96, 0.91, 0.76, 1.0),
     ]
-    for i, color in enumerate(brick_colors):
-        brick_variants.append(scene.add_material(f"old courtyard brick {i + 1}", color, roughness=0.96))
+    for i, color in enumerate(brick_tints):
+        brick_variants.append(
+            scene.add_material(
+                f"old courtyard brick {i + 1}",
+                color,
+                roughness=0.97,
+                base_color_texture=brick_tex,
+                normal_texture=brick_nrm,
+                normal_scale=0.52,
+            )
+        )
     materials["bricks"] = brick_variants
-    materials["brick_gap"] = scene.add_material("dark red mortar gaps", (0.18, 0.10, 0.075, 1.0), roughness=1.0)
+    materials["brick_gap"] = scene.add_material(
+        "warm dusty courtyard grout",
+        (0.80, 0.70, 0.56, 1.0),
+        roughness=1.0,
+        # Khe sân vẫn sáng nhưng ấm hơn để hợp nền cam đất.
+        normal_texture=mortar_nrm,
+        normal_scale=0.18,
+    )
 
     return materials
 
-
-def _mat(materials: dict[str, int | list[int]], name: str) -> int:
+def _mat(materials: MaterialMap, name: str) -> int:
     value = materials[name]
     if isinstance(value, list):
         raise TypeError(f"Material {name!r} là list, không phải int.")
     return value
 
 
-def _mat_list(materials: dict[str, int | list[int]], name: str) -> list[int]:
+def _mat_list(materials: MaterialMap, name: str) -> list[int]:
     value = materials[name]
     if not isinstance(value, list):
         raise TypeError(f"Material {name!r} là int, không phải list.")
@@ -132,23 +372,284 @@ def _roof_axes(y_eave: float, y_ridge: float, start_z: float, ridge_z: float) ->
     return u, v, n, tile_v, slope_len
 
 
+
+# -----------------------------------------------------------------------------
+# Helper cây mềm: lấy tinh thần cây file 1 nhưng thu gọn cho scene Nhà cổ Tràng An
+# -----------------------------------------------------------------------------
+
+
+def _rand(rng: Random, lo: float, hi: float) -> float:
+    return rng.uniform(lo, hi)
+
+
+def _orthonormal_from_forward(forward: Vec3) -> tuple[Vec3, Vec3, Vec3]:
+    f = v_norm(forward)
+    helper = (0.0, 1.0, 0.0)
+    if abs(f[1]) > 0.92:
+        helper = (1.0, 0.0, 0.0)
+    right = v_norm(v_cross(helper, f))
+    up = v_norm(v_cross(f, right))
+    return right, up, f
+
+
+def _add_curved_frustum(
+    scene: SceneMesh,
+    start: Vec3,
+    end: Vec3,
+    radius_start: float,
+    radius_end: float,
+    material: int,
+    *,
+    rng: Random,
+    bend: float = 0.08,
+    steps: int = 4,
+    segments: int = 8,
+) -> None:
+    """Thân/cành cong nhẹ, tránh cảm giác que thẳng cứng."""
+    direction = v_sub(end, start)
+    if v_len(direction) < 1e-5:
+        return
+
+    right, up, _ = _orthonormal_from_forward(direction)
+    side_bias = v_add(v_mul(right, _rand(rng, -bend, bend)), v_mul(up, _rand(rng, -bend * 0.55, bend * 0.55)))
+
+    prev = start
+    prev_radius = radius_start
+    for i in range(1, steps + 1):
+        t = i / steps
+        point = v_lerp(start, end, t)
+        point = v_add(point, v_mul(side_bias, math.sin(math.pi * t)))
+        radius = radius_start + (radius_end - radius_start) * t
+        scene.add_frustum_between(prev, point, prev_radius, radius, material, segments=segments, cap_ends=i == steps)
+        prev = point
+        prev_radius = radius
+
+
+def _push_canopy_vertex(scene: SceneMesh, position: Vec3, center: Vec3, radii: Vec3, uv: tuple[float, float]) -> int:
+    """Vertex tán lá có normal theo elip để bề mặt nhìn mềm hơn lathe/quad phẳng."""
+    rx, ry, rz = (max(radii[0], 1e-4), max(radii[1], 1e-4), max(radii[2], 1e-4))
+    normal = v_norm(((position[0] - center[0]) / rx, (position[1] - center[1]) / ry, (position[2] - center[2]) / rz))
+    index = len(scene.positions)
+    scene.positions.append(position)
+    scene.normals.append(normal)
+    scene.texcoords.append(uv)
+    return index
+
+
+def _add_irregular_ellipsoid(
+    scene: SceneMesh,
+    center: Vec3,
+    radii: Vec3,
+    material: int,
+    *,
+    rng: Random,
+    segments: int = 18,
+    rings: int = 8,
+    wobble: float = 0.14,
+    squash_bottom: float = 0.22,
+) -> None:
+    """Cụm tán lá elip méo nhẹ, dày và bo mềm thay cho tán tam giác/rời rạc."""
+    rx, ry, rz = radii
+    if rx <= 0.0 or ry <= 0.0 or rz <= 0.0:
+        return
+    phase1 = _rand(rng, 0.0, math.tau)
+    phase2 = _rand(rng, 0.0, math.tau)
+
+    def ring_point(lat: float, seg: int, ring_index: int) -> Vec3:
+        angle = math.tau * seg / segments
+        radial = math.cos(lat)
+        y = math.sin(lat) * ry
+        if y < 0.0:
+            y *= 1.0 - squash_bottom
+        w = 1.0 + wobble * (
+            0.45 * math.sin(angle * 2.0 + phase1)
+            + 0.32 * math.sin(angle * 5.0 + ring_index * 0.9 + phase2)
+            + 0.23 * math.sin((angle + lat) * 3.0 + phase1 * 0.7)
+        )
+        return (
+            center[0] + math.cos(angle) * radial * rx * w,
+            center[1] + y * (1.0 + wobble * 0.18 * math.sin(angle * 3.0 + phase2)),
+            center[2] + math.sin(angle) * radial * rz * w,
+        )
+
+    ring_vertices: list[list[Vec3]] = []
+    for r in range(1, rings):
+        lat = -math.pi / 2.0 + math.pi * r / rings
+        ring_vertices.append([ring_point(lat, s, r) for s in range(segments)])
+
+    bottom = (center[0], center[1] - ry * (1.0 - squash_bottom), center[2])
+    top = (center[0], center[1] + ry, center[2])
+    out = scene.indices_by_material[material]
+
+    first = ring_vertices[0]
+    for s in range(segments):
+        j = (s + 1) % segments
+        base = len(scene.positions)
+        _push_canopy_vertex(scene, bottom, center, radii, (0.5, 0.0))
+        _push_canopy_vertex(scene, first[j], center, radii, (j / segments, 0.12))
+        _push_canopy_vertex(scene, first[s], center, radii, (s / segments, 0.12))
+        out.extend([base, base + 1, base + 2])
+
+    for r in range(len(ring_vertices) - 1):
+        a = ring_vertices[r]
+        b = ring_vertices[r + 1]
+        for s in range(segments):
+            j = (s + 1) % segments
+            base = len(scene.positions)
+            v0 = (r + 1) / rings
+            v1 = (r + 2) / rings
+            _push_canopy_vertex(scene, a[s], center, radii, (s / segments, v0))
+            _push_canopy_vertex(scene, a[j], center, radii, (j / segments, v0))
+            _push_canopy_vertex(scene, b[j], center, radii, (j / segments, v1))
+            _push_canopy_vertex(scene, b[s], center, radii, (s / segments, v1))
+            out.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+
+    last = ring_vertices[-1]
+    for s in range(segments):
+        j = (s + 1) % segments
+        base = len(scene.positions)
+        _push_canopy_vertex(scene, top, center, radii, (0.5, 1.0))
+        _push_canopy_vertex(scene, last[s], center, radii, (s / segments, 0.90))
+        _push_canopy_vertex(scene, last[j], center, radii, (j / segments, 0.90))
+        out.extend([base, base + 1, base + 2])
+
+
+def _add_leaf_card(
+    scene: SceneMesh,
+    center: Vec3,
+    material: int,
+    *,
+    rng: Random,
+    width: float,
+    height: float,
+    tilt: float = 0.18,
+) -> None:
+    """Lá phụ dạng oval 8 cạnh; mềm hơn tam giác nhọn và vẫn nhẹ file."""
+    angle = _rand(rng, 0.0, math.tau)
+    right = v_norm((math.cos(angle), _rand(rng, -tilt, tilt), math.sin(angle)))
+    up = v_norm((_rand(rng, -tilt, tilt), 1.0, _rand(rng, -tilt, tilt)))
+    normal = v_norm(v_cross(right, up))
+
+    base = len(scene.positions)
+    scene.positions.append(center)
+    scene.normals.append(normal)
+    scene.texcoords.append((0.5, 0.5))
+
+    segs = 8
+    for i in range(segs):
+        theta = math.tau * i / segs
+        c = math.cos(theta)
+        s = math.sin(theta)
+        taper = 0.86 + 0.14 * abs(s)
+        p = v_add(center, v_add(v_mul(right, c * width * 0.5 * taper), v_mul(up, s * height * 0.5)))
+        scene.positions.append(p)
+        scene.normals.append(normal)
+        scene.texcoords.append(((c + 1.0) * 0.5, (s + 1.0) * 0.5))
+
+    out = scene.indices_by_material[material]
+    for i in range(segs):
+        j = 1 + ((i + 1) % segs)
+        out.extend((base, base + 1 + i, base + j))
+
+
+def _random_point_on_canopy(center: Vec3, radii: Vec3, rng: Random, *, lower: float = -0.25) -> Vec3:
+    y_frac = _rand(rng, lower, 0.82)
+    radial = math.sqrt(max(0.0, 1.0 - y_frac * y_frac))
+    angle = _rand(rng, 0.0, math.tau)
+    edge = _rand(rng, 0.72, 1.05)
+    return (
+        center[0] + math.cos(angle) * radii[0] * radial * edge,
+        center[1] + y_frac * radii[1],
+        center[2] + math.sin(angle) * radii[2] * radial * edge,
+    )
+
+
+def _add_canopy_sparkles(
+    scene: SceneMesh,
+    center: Vec3,
+    radii: Vec3,
+    leaf: int,
+    leaf_light: int,
+    *,
+    rng: Random,
+    count: int,
+) -> None:
+    for _ in range(count):
+        p = _random_point_on_canopy(center, radii, rng, lower=-0.34)
+        mat = leaf_light if rng.random() < 0.58 else leaf
+        size = _rand(rng, 0.045, 0.105) * (1.0 + radii[1] * 0.16)
+        _add_leaf_card(scene, p, mat, rng=rng, width=size * _rand(rng, 0.82, 1.18), height=size * _rand(rng, 1.05, 1.50), tilt=0.26)
+
+
+def _add_moss_blob(scene: SceneMesh, center: Vec3, radii: Vec3, moss: int, rng: Random) -> None:
+    """Mảng rêu mềm dạng oval thấp, thay các hộp vuông xanh trên đá/nền/lu."""
+    _add_irregular_ellipsoid(
+        scene,
+        center,
+        radii,
+        moss,
+        rng=rng,
+        segments=10,
+        rings=5,
+        wobble=0.20,
+        squash_bottom=0.42,
+    )
+
 # -----------------------------------------------------------------------------
 # Nền, sân gạch, tường, hàng rào
 # -----------------------------------------------------------------------------
 
 
-def _add_ground_and_courtyard(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_ground_and_courtyard(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     earth = _mat(mat, "earth")
     brick_gap = _mat(mat, "brick_gap")
     bricks = _mat_list(mat, "bricks")
+    plinth = _mat(mat, "plinth_bottom")
+    wood_dark = _mat(mat, "wood_dark")
 
-    # Đế lớn để model có cảm giác giống một mô hình sa bàn.
-    scene.add_box((0.0, -0.12, -2.05), (18.6, 0.24, 11.8), earth)
+    # Đế lớn được tách thành plinth đá + lớp đất mỏng phía trên.
+    # Bản trước dùng một hộp đất nâu nên khi soi mặt đáy thấy một mảng nâu quá phẳng.
+    # Lớp plinth đá tối bên dưới giúp đáy cân mắt hơn, còn mặt trên vẫn giữ nền đất/sân cũ.
+    scene.add_box((0.0, -0.23, -2.05), (18.9, 0.30, 12.05), _mat(mat, "base_under"))
+    scene.add_box((0.0, -0.055, -2.05), (18.45, 0.10, 11.55), earth)
+    scene.add_box((0.0, -0.395, -2.05), (18.25, 0.055, 11.35), _mat(mat, "plinth_bottom"))
+    # Viền mỏng dưới đáy và các thanh ngang tạo cảm giác như sa bàn có khung, không còn phẳng trống.
+    scene.add_box((0.0, -0.365, -7.86), (18.55, 0.09, 0.22), _mat(mat, "wood_dark"))
+    scene.add_box((0.0, -0.365, 3.76), (18.55, 0.09, 0.22), _mat(mat, "wood_dark"))
+    scene.add_box((-9.18, -0.365, -2.05), (0.22, 0.09, 11.55), _mat(mat, "wood_dark"))
+    scene.add_box((9.18, -0.365, -2.05), (0.22, 0.09, 11.55), _mat(mat, "wood_dark"))
+    for x in (-5.8, 0.0, 5.8):
+        scene.add_box((x, -0.43, -2.05), (0.10, 0.035, 10.60), _mat(mat, "plinth_bottom"))
+
+    # Tấm cap thấp nhất che mặt đáy bằng texture xám sạch: không còn chấm xanh/rêu ở mặt dưới.
+    scene.add_box((0.0, -0.438, -2.05), (18.95, 0.040, 12.05), plinth)
+
+    # Mặt đáy được phủ thêm tấm đế xám cũ + gân đối xứng để nhìn cân mắt khi soi từ dưới.
+    y_bottom = -0.265
+    scene.add_quad(
+        (-9.30, y_bottom, -7.95),
+        (-9.30, y_bottom, 3.85),
+        (9.30, y_bottom, 3.85),
+        (9.30, y_bottom, -7.95),
+        plinth,
+        normal=(0.0, -1.0, 0.0),
+    )
+    # Viền ngoài + các thanh đỡ ngang dọc tạo đáy dạng sa bàn thay vì một mảng texture lớn.
+    scene.add_box((0.0, y_bottom - 0.025, -7.95), (18.75, 0.10, 0.16), wood_dark)
+    scene.add_box((0.0, y_bottom - 0.025, 3.85), (18.75, 0.10, 0.16), wood_dark)
+    scene.add_box((-9.30, y_bottom - 0.025, -2.05), (0.16, 0.10, 11.85), wood_dark)
+    scene.add_box((9.30, y_bottom - 0.025, -2.05), (0.16, 0.10, 11.85), wood_dark)
+    for x in (-6.10, -3.05, 0.0, 3.05, 6.10):
+        scene.add_box((x, y_bottom - 0.045, -2.05), (0.09, 0.12, 11.55), plinth)
+    for z in (-6.70, -4.60, -2.50, -0.40, 1.70):
+        scene.add_box((0.0, y_bottom - 0.050, z), (18.15, 0.11, 0.09), plinth)
 
     # Lớp vữa tối nằm dưới những viên gạch.
-    scene.add_box((0.0, 0.015, -4.95), (17.2, 0.05, 5.55), brick_gap)
+    # Bản v2 bị hở nửa viên ở hai mép do hàng gạch so le bị skip ở cạnh.
+    # Ở đây lát theo kiểu clip từng viên ở biên, nên hai bên được lấp đầy bằng nửa viên gạch.
+    scene.add_box((0.0, 0.015, -4.95), (17.95, 0.05, 5.55), brick_gap)
 
-    x_min, x_max = -8.35, 8.35
+    x_min, x_max = -8.95, 8.95
     z_min, z_max = -7.45, -2.55
     brick_w = 0.62
     brick_d = 0.34
@@ -159,14 +660,19 @@ def _add_ground_and_courtyard(scene: SceneMesh, mat: dict[str, int | list[int]],
     z = z_min + brick_d / 2.0
     while z < z_max:
         offset = 0.0 if row % 2 == 0 else brick_w * 0.5
-        x = x_min + brick_w / 2.0 - offset
+        x0 = x_min - offset
         col = 0
-        while x < x_max:
-            if x_min + 0.12 < x < x_max - 0.12:
+        while x0 < x_max:
+            x1 = x0 + brick_w
+            bx0 = max(x0 + gap * 0.50, x_min + gap * 0.50)
+            bx1 = min(x1 - gap * 0.50, x_max - gap * 0.50)
+            visible_w = bx1 - bx0
+            if visible_w > 0.10:
+                cx = (bx0 + bx1) * 0.5
                 color_mat = bricks[(row * 3 + col + rng.randrange(len(bricks))) % len(bricks)]
                 h = 0.035 + rng.random() * 0.012
-                scene.add_box((x, y + h * 0.5, z), (brick_w - gap, h, brick_d - gap), color_mat)
-            x += brick_w
+                scene.add_box((cx, y + h * 0.5, z), (visible_w, h, brick_d - gap), color_mat)
+            x0 += brick_w
             col += 1
         z += brick_d
         row += 1
@@ -177,11 +683,11 @@ def _add_ground_and_courtyard(scene: SceneMesh, mat: dict[str, int | list[int]],
     scene.add_box((9.18, 0.12, -2.05), (0.28, 0.28, 11.5), earth)
 
 
-def _add_low_walls_and_fence(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_low_walls_and_fence(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     stone = _mat(mat, "stone")
     stone_dark = _mat(mat, "stone_dark")
     stone_light = _mat(mat, "stone_light")
-    bamboo = _mat(mat, "bamboo")
+    bamboo = _mat(mat, "bamboo_fence")
     moss = _mat(mat, "moss")
 
     # Tường đá thấp hai bên và phía sau.
@@ -222,7 +728,13 @@ def _add_low_walls_and_fence(scene: SceneMesh, mat: dict[str, int | list[int]], 
         x = side * 8.78
         y = rng.uniform(0.22, 0.90)
         z = rng.uniform(-2.1, 3.0)
-        scene.add_box((x, y, z), (0.025, rng.uniform(0.06, 0.16), rng.uniform(0.10, 0.25)), moss)
+        _add_moss_blob(
+            scene,
+            (x, y, z),
+            (0.024, rng.uniform(0.045, 0.105), rng.uniform(0.09, 0.20)),
+            moss,
+            rng,
+        )
 
     # Hàng rào tre thấp phía trước, chừa khoảng giữa cho bậc tam cấp.
     _add_bamboo_fence(scene, bamboo, x0=-8.05, x1=-2.05, z=-6.62)
@@ -253,7 +765,7 @@ def _add_bamboo_fence(scene: SceneMesh, bamboo: int, *, x0: float, x1: float, z:
 # -----------------------------------------------------------------------------
 
 
-def _add_house_base(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_house_base(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     stone = _mat(mat, "stone")
     stone_dark = _mat(mat, "stone_dark")
     stone_light = _mat(mat, "stone_light")
@@ -297,10 +809,10 @@ def _add_house_base(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Rand
         x = rng.uniform(-6.2, 6.2)
         y = rng.uniform(0.47, 0.68)
         z = rng.choice([-2.47, -1.95]) + rng.uniform(-0.015, 0.015)
-        scene.add_box((x, y, z), (rng.uniform(0.10, 0.28), 0.018, 0.035), moss)
+        _add_moss_blob(scene, (x, y, z), (rng.uniform(0.07, 0.18), 0.020, 0.030), moss, rng)
 
 
-def _add_house_body_and_doors(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_house_body_and_doors(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     wood = _mat(mat, "wood")
     wood_dark = _mat(mat, "wood_dark")
     wood_light = _mat(mat, "wood_light")
@@ -325,9 +837,11 @@ def _add_house_body_and_doors(scene: SceneMesh, mat: dict[str, int | list[int]],
     scene.add_box((0.0, 2.16, -1.74), (12.40, 0.10, 0.14), wood_light)
 
     # 5 gian cửa bức bàn, nhiều cánh.
+    # Bản v7: khép đều các ô cánh giữa ở những gian đang bị trống đen
+    # để mặt tiền nhìn cân và liền mạch hơn; các phần còn lại giữ nguyên.
     bay_centers = [-4.95, -2.48, 0.0, 2.48, 4.95]
     for bay_i, cx in enumerate(bay_centers):
-        open_middle = bay_i in (1, 3)
+        open_middle = False
         _add_door_bay(
             scene,
             cx=cx,
@@ -402,7 +916,7 @@ def _add_door_bay(
     scene.add_box((cx + width / 2.0 + 0.05, y_base + height / 2.0, z - 0.02), (0.07, height + 0.08, 0.08), wood_dark)
 
 
-def _add_roof(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_roof(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     roof_base = _mat(mat, "roof_base")
     roof_tiles = _mat_list(mat, "roof_tiles")
     stone = _mat(mat, "stone")
@@ -454,22 +968,68 @@ def _add_roof(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) ->
         scene.add_box_between((x, y_eave + 0.03, z_front), (x, y_ridge + 0.08, z_ridge), 0.16, stone_light, width=0.24, up_hint=(1.0, 0.0, 0.0))
         scene.add_box_between((x, y_ridge + 0.08, z_ridge), (x, y_eave + 0.03, z_back), 0.16, stone_light, width=0.24, up_hint=(1.0, 0.0, 0.0))
 
-    # Mặt hồi tam giác bằng gỗ.
-    for x in (-6.45, 6.45):
+    # Mặt hồi tam giác bằng gỗ. Đẩy hồi ra sát mép mái để không còn khe hở ở hai hông.
+    for x in (-7.20, 7.20):
         sign = 1.0 if x > 0 else -1.0
         normal = (sign, 0.0, 0.0)
-        p0 = (x, 2.18, z_front + 0.20)
-        p1 = (x, 2.18, z_back - 0.20)
-        p2 = (x, 3.74, z_ridge)
+        p0 = (x, y_eave - 0.10, z_front + 0.06)
+        p1 = (x, y_eave - 0.10, z_back - 0.06)
+        p2 = (x, y_ridge - 0.03, z_ridge)
         if x > 0:
             scene.add_triangle(p0, p1, p2, wood, normal=normal)
         else:
             scene.add_triangle(p1, p0, p2, wood, normal=normal)
-        # Ván dọc trên hồi.
+
+        # Nẹp chéo nằm ngay dưới bờ chảy, che tiếp giáp giữa mái và mặt tam giác.
+        scene.add_box_between(
+            (x + sign * 0.018, y_eave - 0.03, z_front + 0.03),
+            (x + sign * 0.018, y_ridge + 0.02, z_ridge),
+            0.105,
+            wood_dark,
+            width=0.16,
+            up_hint=(sign, 0.0, 0.0),
+        )
+        scene.add_box_between(
+            (x + sign * 0.018, y_ridge + 0.02, z_ridge),
+            (x + sign * 0.018, y_eave - 0.03, z_back - 0.03),
+            0.105,
+            wood_dark,
+            width=0.16,
+            up_hint=(sign, 0.0, 0.0),
+        )
+        scene.add_box_between(
+            (x + sign * 0.020, y_eave - 0.12, z_front + 0.06),
+            (x + sign * 0.020, y_eave - 0.12, z_back - 0.06),
+            0.085,
+            wood_dark,
+            width=0.12,
+            up_hint=(sign, 0.0, 0.0),
+        )
+
+        # Ván dọc trên hồi ăn sát theo tam giác mới.
         for i in range(7):
             z = -1.35 + i * 0.45
-            y_mid = 2.45 + (1.0 - abs(z) / 1.55) * 0.65
-            scene.add_box((x + sign * 0.035, y_mid, z), (0.06, 0.95, 0.035), wood_dark)
+            y_mid = 2.58 + (1.0 - abs(z) / 1.55) * 0.72
+            scene.add_box((x + sign * 0.035, y_mid, z), (0.06, 0.98, 0.035), wood_dark)
+
+    # Tấm bịt đầu hồi ngoài cùng: khép kín khe giữa mái và mặt tam giác hai bên.
+    # Đặt sát dưới bờ chảy để khi nhìn ngang không còn cảm giác mái rời khỏi hồi nhà.
+    for x in (-7.18, 7.18):
+        sign = 1.0 if x > 0 else -1.0
+        normal = (sign, 0.0, 0.0)
+        q0 = (x, y_eave - 0.045, z_front + 0.035)
+        q1 = (x, y_eave - 0.045, z_back - 0.035)
+        q2 = (x, y_ridge - 0.020, z_ridge)
+        if x > 0:
+            scene.add_triangle(q0, q1, q2, wood_dark, normal=normal)
+        else:
+            scene.add_triangle(q1, q0, q2, wood_dark, normal=normal)
+        scene.add_box_between((x, y_eave - 0.03, z_front + 0.06), (x, y_ridge + 0.03, z_ridge), 0.08, wood, width=0.12, up_hint=(sign, 0.0, 0.0))
+        scene.add_box_between((x, y_ridge + 0.03, z_ridge), (x, y_eave - 0.03, z_back - 0.06), 0.08, wood, width=0.12, up_hint=(sign, 0.0, 0.0))
+        for i in range(5):
+            z = -1.08 + i * 0.54
+            y_mid = 2.52 + (1.0 - abs(z) / 1.55) * 0.58
+            scene.add_box((x + sign * 0.032, y_mid, z), (0.055, 0.72, 0.030), wood)
 
     # Rui mè dưới mái hiên trước.
     for i in range(27):
@@ -527,7 +1087,7 @@ def _add_roof_plane(
         scene.add_box(center, (width - 0.55, 0.045, 0.045), roof_tiles[row % len(roof_tiles)], x_axis=u, y_axis=n, z_axis=tile_v)
 
 
-def _add_columns_and_wood_frame(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_columns_and_wood_frame(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     wood = _mat(mat, "wood")
     wood_dark = _mat(mat, "wood_dark")
     wood_light = _mat(mat, "wood_light")
@@ -564,18 +1124,19 @@ def _add_columns_and_wood_frame(scene: SceneMesh, mat: dict[str, int | list[int]
 # -----------------------------------------------------------------------------
 
 
-def _add_jars_and_garden(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_jars_and_garden(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     jar = _mat(mat, "jar")
     jar_dark = _mat(mat, "jar_dark")
+    jar_water = _mat(mat, "jar_water")
     moss = _mat(mat, "moss")
     leaf = _mat(mat, "leaf")
     leaf_light = _mat(mat, "leaf_light")
     bamboo = _mat(mat, "bamboo")
 
-    _add_water_jar(scene, (-7.05, 0.07, -4.55), 0.95, jar, jar_dark, moss)
-    _add_water_jar(scene, (-4.95, 0.07, -4.12), 0.58, jar, jar_dark, moss)
-    _add_water_jar(scene, (5.00, 0.07, -4.35), 0.82, jar, jar_dark, moss)
-    _add_water_jar(scene, (6.25, 0.07, -4.05), 0.54, jar, jar_dark, moss)
+    _add_water_jar(scene, (-7.05, 0.07, -4.55), 0.95, jar, jar_dark, jar_water, moss, bamboo, rng)
+    _add_water_jar(scene, (-4.95, 0.07, -4.12), 0.58, jar, jar_dark, jar_water, moss, bamboo, rng)
+    _add_water_jar(scene, (5.00, 0.07, -4.35), 0.82, jar, jar_dark, jar_water, moss, bamboo, rng)
+    _add_water_jar(scene, (6.25, 0.07, -4.05), 0.54, jar, jar_dark, jar_water, moss, bamboo, rng)
 
     _add_areca_palm(scene, (-7.65, 0.08, -3.18), height=2.85, trunk=bamboo, leaf=leaf, leaf_light=leaf_light, rng=rng)
     _add_areca_palm(scene, (7.45, 0.08, -2.90), height=3.05, trunk=bamboo, leaf=leaf, leaf_light=leaf_light, rng=rng)
@@ -592,10 +1153,12 @@ def _add_jars_and_garden(scene: SceneMesh, mat: dict[str, int | list[int]], rng:
         _add_leaf_cluster(scene, center, scale, count, leaf, leaf_light, rng)
 
 
-def _add_side_gardens(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_side_gardens(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     """Thêm cây/bụi hai bên hông nhà để mảng tường đá có chiều sâu hơn."""
     leaf = _mat(mat, "leaf")
     leaf_light = _mat(mat, "leaf_light")
+    leaf_dark = _mat(mat, "leaf_dark")
+    leaf_sunlit = _mat(mat, "leaf_sunlit")
     trunk = _mat(mat, "wood_dark")
     bamboo = _mat(mat, "bamboo")
     moss = _mat(mat, "moss")
@@ -609,8 +1172,17 @@ def _add_side_gardens(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Ra
     for side, inside_x, wall_x in side_specs:
         for index, z in enumerate(side_zs):
             x = inside_x + side * rng.uniform(-0.08, 0.12)
-            center = (x, 0.36 + rng.uniform(-0.04, 0.08), z + rng.uniform(-0.12, 0.12))
-            _add_leaf_cluster(scene, center, rng.uniform(0.38, 0.58), rng.randint(12, 18), leaf, leaf_light, rng)
+            center = (x, 0.39 + rng.uniform(-0.04, 0.09), z + rng.uniform(-0.12, 0.12))
+            # Tán hông được tăng scale/count và dùng cụm ellipsoid, không còn mảng lá vuông rời.
+            _add_leaf_cluster(
+                scene,
+                center,
+                rng.uniform(0.54, 0.76),
+                rng.randint(24, 34),
+                leaf_dark if index % 3 == 0 else leaf,
+                leaf_sunlit if index % 3 == 1 else leaf_light,
+                rng,
+            )
 
             if index % 2 == 0:
                 scene.add_frustum_between(
@@ -634,8 +1206,8 @@ def _add_side_gardens(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Ra
                 lean=rng.uniform(-0.20, 0.20),
                 vine=bamboo,
                 branch=trunk,
-                leaf=leaf,
-                leaf_light=leaf_light,
+                leaf=leaf_dark if index % 2 == 0 else leaf,
+                leaf_light=leaf_sunlit,
                 rng=rng,
             )
 
@@ -655,8 +1227,8 @@ def _add_side_gardens(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Ra
             height=height * rng.uniform(0.92, 1.08),
             canopy_scale=canopy_scale * rng.uniform(0.90, 1.12),
             trunk=trunk,
-            leaf=leaf,
-            leaf_light=leaf_light,
+            leaf=leaf_dark if x < 0 else leaf,
+            leaf_light=leaf_sunlit,
             rng=rng,
         )
 
@@ -667,7 +1239,7 @@ def _add_side_gardens(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Ra
     # Rêu nền dưới bụi cây giúp chân tường bớt trống nhưng không còn thành các chấm riêng lẻ.
     for side, inside_x, _ in side_specs:
         for z in [-1.55, -0.35, 0.85, 2.05, 2.95]:
-            scene.add_box((inside_x - side * 0.08, 0.13, z), (0.42, 0.025, 0.22), moss)
+            _add_moss_blob(scene, (inside_x - side * 0.08, 0.13, z), (0.23, 0.035, 0.13), moss, rng)
 
 
 def _add_wall_climber(
@@ -721,22 +1293,67 @@ def _add_wall_climber(
     _add_leaf_cluster(scene, crown, rng.uniform(0.24, 0.38), rng.randint(14, 22), leaf, leaf_light, rng)
 
 
-def _add_water_jar(scene: SceneMesh, center: Vec3, scale: float, jar: int, jar_dark: int, moss: int) -> None:
+def _add_water_jar(
+    scene: SceneMesh,
+    center: Vec3,
+    scale: float,
+    jar: int,
+    jar_dark: int,
+    jar_water: int,
+    moss: int,
+    bamboo: int,
+    rng: Random,
+) -> None:
+    """Lu/chum nước làng quê: bụng phình, miệng dày, màu sành nâu cũ."""
     profile = [
-        (0.18 * scale, 0.00 * scale),
-        (0.33 * scale, 0.10 * scale),
-        (0.44 * scale, 0.34 * scale),
-        (0.39 * scale, 0.62 * scale),
-        (0.24 * scale, 0.78 * scale),
-        (0.30 * scale, 0.86 * scale),
-        (0.23 * scale, 0.93 * scale),
+        (0.17 * scale, 0.00 * scale),
+        (0.30 * scale, 0.08 * scale),
+        (0.47 * scale, 0.28 * scale),
+        (0.55 * scale, 0.52 * scale),
+        (0.49 * scale, 0.72 * scale),
+        (0.34 * scale, 0.92 * scale),
+        (0.39 * scale, 1.02 * scale),
+        (0.31 * scale, 1.10 * scale),
     ]
-    scene.add_lathe(center, profile, jar, segments=24)
-    top_y = center[1] + 0.93 * scale
-    scene.add_frustum((center[0], top_y + 0.012, center[2]), 0.24 * scale, 0.21 * scale, 0.035 * scale, jar_dark, segments=24)
-    # Vài vệt rêu nhỏ trên chum.
-    scene.add_box((center[0] + 0.24 * scale, center[1] + 0.45 * scale, center[2] - 0.15 * scale), (0.025 * scale, 0.12 * scale, 0.18 * scale), moss)
-    scene.add_box((center[0] - 0.20 * scale, center[1] + 0.32 * scale, center[2] + 0.18 * scale), (0.025 * scale, 0.10 * scale, 0.13 * scale), moss)
+    scene.add_lathe(center, profile, jar, segments=32, cap_top=False)
+
+    # Chân lu thấp và các gờ nổi quanh thân để nhìn đúng kiểu gốm sành thủ công.
+    scene.add_frustum((center[0], center[1] + 0.045 * scale, center[2]), 0.26 * scale, 0.23 * scale, 0.09 * scale, jar_dark, segments=32, cap_bottom=False, cap_top=False)
+    for y, radius, thick in [
+        (0.33, 0.515, 0.030),
+        (0.58, 0.545, 0.034),
+        (0.86, 0.405, 0.030),
+    ]:
+        scene.add_frustum(
+            (center[0], center[1] + y * scale, center[2]),
+            radius * scale,
+            (radius * 0.985) * scale,
+            thick * scale,
+            jar_dark if y > 0.80 else jar,
+            segments=32,
+            cap_bottom=False,
+            cap_top=False,
+        )
+
+    top_y = center[1] + 1.10 * scale
+    scene.add_frustum((center[0], top_y + 0.012 * scale, center[2]), 0.34 * scale, 0.30 * scale, 0.070 * scale, jar_dark, segments=32, cap_bottom=False, cap_top=False)
+    # Mặt nước tối nằm thấp bên trong miệng lu, không phủ kín gờ miệng.
+    scene.add_frustum((center[0], top_y - 0.018 * scale, center[2]), 0.235 * scale, 0.235 * scale, 0.012 * scale, jar_water, segments=32, cap_bottom=False, cap_top=True)
+
+    # Gáo/que múc tre nhỏ cho lu lớn, tạo cảm giác sân quê nhưng vẫn nhẹ file.
+    if scale > 0.75:
+        start = (center[0] - 0.18 * scale, top_y + 0.05 * scale, center[2] + 0.08 * scale)
+        end = (center[0] + 0.52 * scale, top_y + 0.42 * scale, center[2] - 0.30 * scale)
+        scene.add_frustum_between(start, end, 0.018 * scale, 0.012 * scale, bamboo, segments=8, cap_ends=True)
+        bowl_center = (end[0] + 0.05 * scale, end[1] - 0.015 * scale, end[2] - 0.02 * scale)
+        scene.add_frustum(bowl_center, 0.105 * scale, 0.078 * scale, 0.055 * scale, jar_dark, segments=16, cap_bottom=True, cap_top=False)
+
+    # Vệt rêu nhỏ bám thấp trên lu, đặt sát thân để không thành mảng xanh rời.
+    for angle, y, h in [(0.65, 0.44, 0.12), (3.72, 0.30, 0.10), (5.15, 0.66, 0.09)]:
+        radius = 0.548 * scale if y < 0.60 else 0.46 * scale
+        x = center[0] + math.cos(angle) * radius
+        z = center[2] + math.sin(angle) * radius
+        _add_moss_blob(scene, (x, center[1] + y * scale, z), (0.030 * scale, h * 0.55 * scale, 0.095 * scale), moss, rng)
 
 
 def _add_areca_palm(
@@ -788,32 +1405,82 @@ def _add_leaf_cluster(
     leaf_light: int,
     rng: Random,
 ) -> None:
-    for i in range(count):
-        angle = rng.random() * math.tau
-        radius = rng.random() * scale
-        c = (
-            center[0] + math.cos(angle) * radius,
-            center[1] + rng.uniform(0.00, scale * 0.65),
-            center[2] + math.sin(angle) * radius,
+    """Cụm tán/bụi mềm: nhiều ellipsoid nhỏ chồng dính, kèm lá bo tròn ở rìa.
+
+    Bản cũ dùng nhiều tam giác rời nên khi xem gần dễ thấy vuông/cứng. Cách này
+    tạo khối tán chính + tán phụ liên kết giống một bụi/cây thật hơn.
+    """
+    main_radii = (
+        scale * rng.uniform(0.62, 0.84),
+        scale * rng.uniform(0.34, 0.52),
+        scale * rng.uniform(0.54, 0.78),
+    )
+    main_center = (
+        center[0] + rng.uniform(-0.04, 0.04) * scale,
+        center[1] + main_radii[1] * 0.58,
+        center[2] + rng.uniform(-0.04, 0.04) * scale,
+    )
+    _add_irregular_ellipsoid(
+        scene,
+        main_center,
+        main_radii,
+        leaf,
+        rng=rng,
+        segments=16,
+        rings=8,
+        wobble=0.16,
+        squash_bottom=0.30,
+    )
+
+    # Cụm phụ chồng vào mép để tán không tròn đều nhưng vẫn liền khối.
+    puff_count = max(3, min(9, count // 3))
+    for i in range(puff_count):
+        angle = math.tau * i / puff_count + rng.uniform(-0.45, 0.45)
+        offset = (
+            math.cos(angle) * main_radii[0] * rng.uniform(0.30, 0.72),
+            rng.uniform(-0.16, 0.28) * main_radii[1],
+            math.sin(angle) * main_radii[2] * rng.uniform(0.30, 0.72),
         )
-        length = rng.uniform(0.16, 0.34) * scale
-        width = rng.uniform(0.05, 0.12) * scale
-        direction = v_norm((math.cos(angle + rng.uniform(-0.8, 0.8)), rng.uniform(0.05, 0.35), math.sin(angle + rng.uniform(-0.8, 0.8))))
-        side = v_norm(v_cross(direction, (0.0, 1.0, 0.0)))
-        if v_len(side) < 0.01:
-            side = (1.0, 0.0, 0.0)
-        p0 = v_add(c, v_mul(side, -width))
-        p1 = v_add(c, v_mul(side, width))
-        p2 = v_add(c, v_mul(direction, length))
-        scene.add_triangle(p0, p1, p2, leaf_light if i % 5 == 0 else leaf)
+        pc = v_add(main_center, offset)
+        pr = (
+            main_radii[0] * rng.uniform(0.26, 0.46),
+            main_radii[1] * rng.uniform(0.30, 0.54),
+            main_radii[2] * rng.uniform(0.26, 0.50),
+        )
+        _add_irregular_ellipsoid(
+            scene,
+            pc,
+            pr,
+            leaf_light if (i % 4 == 0 or offset[1] > 0.10 * main_radii[1]) else leaf,
+            rng=rng,
+            segments=12,
+            rings=6,
+            wobble=0.20,
+            squash_bottom=0.34,
+        )
 
+    # Lá rìa nhỏ, bo tròn, bám sát bề mặt để không còn cảm giác lá xanh bay rời.
+    fringe_count = max(10, min(42, count * 2))
+    for _ in range(fringe_count):
+        p = _random_point_on_canopy(main_center, main_radii, rng, lower=-0.38)
+        mat = leaf_light if rng.random() < 0.42 else leaf
+        size = scale * rng.uniform(0.055, 0.115)
+        _add_leaf_diamond(
+            scene,
+            p,
+            mat,
+            rng=rng,
+            width=size * rng.uniform(0.76, 1.12),
+            height=size * rng.uniform(1.00, 1.55),
+            tilt=0.30,
+        )
 
 # -----------------------------------------------------------------------------
-# Nền sau: núi đá vôi Tràng An nhẹ file
+# Nền sau: núi đá vôi Tràng An mềm hơn, dày cây hơn
 # -----------------------------------------------------------------------------
 
 
-def _add_background_karst(scene: SceneMesh, mat: dict[str, int | list[int]], rng: Random) -> None:
+def _add_background_karst(scene: SceneMesh, mat: MaterialMap, rng: Random) -> None:
     stone = _mat(mat, "stone")
     stone_dark = _mat(mat, "stone_dark")
     moss = _mat(mat, "moss")
@@ -821,11 +1488,15 @@ def _add_background_karst(scene: SceneMesh, mat: dict[str, int | list[int]], rng
     leaf_light = _mat(mat, "leaf_light")
     trunk = _mat(mat, "wood_dark")
 
+    # Bản v9: giữ nguyên logic nền sau của v8; chỉ làm phần đỉnh núi nhẹ hơn nữa
+    # để tránh cảm giác cắt phẳng/nặng ở ngọn, các phần khác không đổi.
+    # Dáng này hợp hơn với cảnh quan Tràng An: núi đá vôi gần thẳng đứng nhưng bề
+    # mặt bị bào mòn, chân núi có cây bụi/rừng thấp chứ không phải các cột phẳng.
     clusters = [
-        ((-5.4, 0.10, 4.65), 3.35, 1.05, 5),
-        ((-1.2, 0.10, 5.05), 4.25, 1.20, 6),
-        ((3.6, 0.10, 4.85), 3.85, 1.10, 5),
-        ((6.2, 0.10, 4.15), 2.65, 0.80, 3),
+        ((-5.55, 0.10, 4.70), 3.25, 1.20, 6),
+        ((-1.25, 0.10, 5.10), 4.05, 1.35, 7),
+        ((3.55, 0.10, 4.90), 3.70, 1.22, 6),
+        ((6.35, 0.10, 4.30), 2.55, 0.95, 4),
     ]
     for center, height, radius, count in clusters:
         _add_karst_cluster(scene, center, height, radius, count, stone, stone_dark, moss, leaf, leaf_light, rng)
@@ -834,11 +1505,18 @@ def _add_background_karst(scene: SceneMesh, mat: dict[str, int | list[int]], rng
     # Mỗi cây có thân, cành và tán lá dạng khối low-poly.
     _add_background_tree_belt(scene, trunk, leaf, leaf_light, rng)
 
-    # Bụi cây thấp sát chân tường để nối cảnh quan với tường đá.
-    for i in range(22):
-        x = -7.8 + i * 0.74 + rng.uniform(-0.16, 0.16)
-        z = rng.uniform(3.15, 3.82)
-        _add_leaf_cluster(scene, (x, 1.10, z), rng.uniform(0.32, 0.52), rng.randint(8, 13), leaf, leaf_light, rng)
+    # Bụi cây thấp sát chân tường + chân núi để phần nền sau dày và liên kết hơn.
+    for i in range(24):
+        x = -8.05 + i * 0.68 + rng.uniform(-0.13, 0.13)
+        z = rng.uniform(3.12, 3.95)
+        scale = rng.uniform(0.26, 0.44)
+        _add_leaf_cluster(scene, (x, 1.02 + rng.uniform(-0.08, 0.16), z), scale, rng.randint(7, 11), leaf, leaf_light, rng)
+
+    # Một lớp lùm xanh thưa ngay giữa các chân núi, để đá không còn cảm giác trơ/cứng.
+    for i in range(8):
+        x = rng.uniform(-7.35, 7.35)
+        z = rng.uniform(4.10, 5.55)
+        _add_leaf_cluster(scene, (x, rng.uniform(0.62, 1.12), z), rng.uniform(0.22, 0.36), rng.randint(7, 10), leaf, leaf_light, rng)
 
 
 
@@ -906,6 +1584,30 @@ def _add_background_tree_belt(
             rng=rng,
         )
 
+    # Bản v8 thêm vài cây thấp ở chân núi sau: tán phủ lên chân đá để nền sau không còn
+    # cảm giác các cột núi trơ trọi.
+    filler_row = [
+        (-7.10, 4.35, 1.50, 0.46),
+        (-5.35, 4.22, 1.65, 0.48),
+        (-3.05, 4.48, 1.55, 0.44),
+        (-0.85, 4.30, 1.70, 0.50),
+        (1.45, 4.42, 1.58, 0.46),
+        (3.70, 4.28, 1.68, 0.50),
+        (5.95, 4.40, 1.52, 0.44),
+        (7.20, 4.18, 1.42, 0.42),
+    ]
+    for x, z, height, canopy_scale in filler_row:
+        _add_background_tree(
+            scene,
+            base=(x + rng.uniform(-0.16, 0.16), 0.10, z + rng.uniform(-0.12, 0.12)),
+            height=height * rng.uniform(0.90, 1.08),
+            canopy_scale=canopy_scale * rng.uniform(0.90, 1.14),
+            trunk=trunk,
+            leaf=leaf,
+            leaf_light=leaf_light,
+            rng=rng,
+        )
+
 
 def _add_background_tree(
     scene: SceneMesh,
@@ -918,61 +1620,90 @@ def _add_background_tree(
     leaf_light: int,
     rng: Random,
 ) -> None:
-    """Cây nền phía sau nhà: thân mảnh, cành thấp-poly, tán lá thành cụm rõ ràng."""
+    """Cây nền phía sau/hai hông: tán mềm, dày, các cụm lá chồng dính nhau."""
     top = (
         base[0] + rng.uniform(-0.18, 0.18),
         base[1] + height,
         base[2] + rng.uniform(-0.12, 0.12),
     )
 
+    # Thân hơi nghiêng + nhiều cành phụ để tán lá có điểm bám tự nhiên.
     scene.add_frustum_between(
         base,
         top,
-        0.055 * canopy_scale,
-        0.030 * canopy_scale,
+        0.070 * canopy_scale,
+        0.032 * canopy_scale,
         trunk,
-        segments=8,
+        segments=10,
     )
 
-    # Cành chính để khi xoay model vẫn thấy là cây, không phải bụi lá nổi.
     branch_tips: list[Vec3] = []
-    branch_count = rng.randint(3, 5)
+    branch_count = rng.randint(5, 7)
     for i in range(branch_count):
-        angle = math.tau * i / branch_count + rng.uniform(-0.35, 0.35)
-        start = v_lerp(base, top, rng.uniform(0.58, 0.82))
-        length = canopy_scale * rng.uniform(0.38, 0.72)
+        angle = math.tau * i / branch_count + rng.uniform(-0.36, 0.36)
+        start = v_lerp(base, top, rng.uniform(0.52, 0.82))
+        length = canopy_scale * rng.uniform(0.42, 0.82)
         tip = (
             start[0] + math.cos(angle) * length,
-            start[1] + canopy_scale * rng.uniform(0.15, 0.42),
+            start[1] + canopy_scale * rng.uniform(0.12, 0.46),
             start[2] + math.sin(angle) * length,
         )
         branch_tips.append(tip)
         scene.add_frustum_between(
             start,
             tip,
-            0.025 * canopy_scale,
-            0.012 * canopy_scale,
+            0.026 * canopy_scale,
+            0.010 * canopy_scale,
             trunk,
-            segments=6,
+            segments=7,
         )
 
-    # Tán chính và tán phụ. Dùng lathe để tạo khối lá bo tròn thấp-poly.
-    _add_leaf_blob(scene, (top[0], top[1] - 0.18 * canopy_scale, top[2]), canopy_scale * 0.72, leaf, rng, segments=10)
-    _add_leaf_blob(scene, (top[0] - 0.28 * canopy_scale, top[1] - 0.08 * canopy_scale, top[2] + 0.12 * canopy_scale), canopy_scale * 0.50, leaf_light, rng, segments=9)
-    _add_leaf_blob(scene, (top[0] + 0.30 * canopy_scale, top[1] - 0.12 * canopy_scale, top[2] - 0.10 * canopy_scale), canopy_scale * 0.52, leaf, rng, segments=9)
+    crown_center = (top[0], top[1] - 0.10 * canopy_scale, top[2])
+    crown_radii = (
+        canopy_scale * rng.uniform(0.76, 0.96),
+        canopy_scale * rng.uniform(0.54, 0.72),
+        canopy_scale * rng.uniform(0.64, 0.88),
+    )
+
+    # Tán chính lớn + tán phụ chồng lên nhau: nhìn dày, liền khối nhưng không bị vuông.
+    _add_irregular_ellipsoid(scene, crown_center, crown_radii, leaf, rng=rng, segments=20, rings=10, wobble=0.14, squash_bottom=0.22)
+
+    puff_count = rng.randint(6, 9)
+    for i in range(puff_count):
+        angle = math.tau * i / puff_count + rng.uniform(-0.42, 0.42)
+        lateral = rng.uniform(0.32, 0.78)
+        offset = (
+            math.cos(angle) * crown_radii[0] * lateral,
+            rng.uniform(-0.22, 0.30) * crown_radii[1],
+            math.sin(angle) * crown_radii[2] * lateral,
+        )
+        p_center = v_add(crown_center, offset)
+        p_radii = (
+            crown_radii[0] * rng.uniform(0.30, 0.48),
+            crown_radii[1] * rng.uniform(0.30, 0.52),
+            crown_radii[2] * rng.uniform(0.30, 0.54),
+        )
+        mat = leaf_light if rng.random() < 0.28 or offset[1] > 0.08 else leaf
+        _add_irregular_ellipsoid(scene, p_center, p_radii, mat, rng=rng, segments=16, rings=8, wobble=0.18, squash_bottom=0.25)
 
     for tip_i, tip in enumerate(branch_tips):
-        blob_mat = leaf_light if tip_i % 2 == 0 else leaf
-        _add_leaf_blob(scene, tip, canopy_scale * rng.uniform(0.34, 0.48), blob_mat, rng, segments=8)
-
-    # Vài lá tam giác ló ra quanh rìa tán để nhìn tự nhiên hơn khi xem gần.
-    for _ in range(12):
-        c = (
-            top[0] + rng.uniform(-0.75, 0.75) * canopy_scale,
-            top[1] + rng.uniform(-0.18, 0.42) * canopy_scale,
-            top[2] + rng.uniform(-0.55, 0.55) * canopy_scale,
+        blob_mat = leaf_light if tip_i % 3 == 0 else leaf
+        _add_irregular_ellipsoid(
+            scene,
+            tip,
+            (canopy_scale * rng.uniform(0.24, 0.38), canopy_scale * rng.uniform(0.20, 0.32), canopy_scale * rng.uniform(0.24, 0.40)),
+            blob_mat,
+            rng=rng,
+            segments=14,
+            rings=7,
+            wobble=0.18,
+            squash_bottom=0.28,
         )
-        _add_single_leaf(scene, c, canopy_scale * rng.uniform(0.16, 0.28), leaf_light if rng.random() < 0.25 else leaf, rng)
+
+    # Lá rìa dùng fan bo tròn nhỏ, bám sát tán; không còn các tam giác xanh bay rời.
+    for _ in range(18):
+        c = _random_point_on_canopy(crown_center, crown_radii, rng, lower=-0.34)
+        _add_leaf_diamond(scene, c, leaf_light if rng.random() < 0.32 else leaf, rng=rng, width=canopy_scale * rng.uniform(0.08, 0.15), height=canopy_scale * rng.uniform(0.10, 0.20))
 
 
 def _add_leaf_blob(
@@ -984,33 +1715,37 @@ def _add_leaf_blob(
     *,
     segments: int = 10,
 ) -> None:
-    """Khối tán lá oval thấp-poly, đủ rõ hình cây nhưng không nặng file."""
-    profile = [
-        (0.10 * scale, -0.44 * scale),
-        (0.38 * scale, -0.30 * scale),
-        (0.56 * scale, -0.02 * scale),
-        (0.47 * scale, 0.26 * scale),
-        (0.24 * scale, 0.46 * scale),
-        (0.05 * scale, 0.54 * scale),
-    ]
+    """Khối tán lá oval mềm, dùng elipsoid méo nhẹ thay cho lathe faceted."""
     jittered_center = (
-        center[0] + rng.uniform(-0.03, 0.03) * scale,
-        center[1] + rng.uniform(-0.02, 0.02) * scale,
-        center[2] + rng.uniform(-0.03, 0.03) * scale,
+        center[0] + rng.uniform(-0.035, 0.035) * scale,
+        center[1] + rng.uniform(-0.025, 0.025) * scale,
+        center[2] + rng.uniform(-0.035, 0.035) * scale,
     )
-    scene.add_lathe(jittered_center, profile, material, segments=segments)
+    segs = max(10, min(18, segments + 4))
+    _add_irregular_ellipsoid(
+        scene,
+        jittered_center,
+        (scale * 0.62, scale * 0.45, scale * 0.56),
+        material,
+        rng=rng,
+        segments=segs,
+        rings=7,
+        wobble=0.16,
+        squash_bottom=0.26,
+    )
 
 
 def _add_single_leaf(scene: SceneMesh, center: Vec3, scale: float, material: int, rng: Random) -> None:
-    angle = rng.random() * math.tau
-    direction = v_norm((math.cos(angle), rng.uniform(-0.10, 0.35), math.sin(angle)))
-    side = v_norm(v_cross(direction, (0.0, 1.0, 0.0)))
-    if v_len(side) < 0.01:
-        side = (1.0, 0.0, 0.0)
-    p0 = v_add(center, v_mul(side, -0.35 * scale))
-    p1 = v_add(center, v_mul(side, 0.35 * scale))
-    p2 = v_add(center, v_mul(direction, 1.00 * scale))
-    scene.add_triangle(p0, p1, p2, material)
+    _add_leaf_diamond(
+        scene,
+        center,
+        material,
+        rng=rng,
+        width=0.42 * scale,
+        height=0.86 * scale,
+        tilt=0.34,
+    )
+
 
 def _add_karst_cluster(
     scene: SceneMesh,
@@ -1025,65 +1760,302 @@ def _add_karst_cluster(
     leaf_light: int,
     rng: Random,
 ) -> None:
+    # Chân cụm đá được nối bằng các mound thấp để nhiều cột không còn tách rời/cứng.
+    for _ in range(max(3, count // 2)):
+        mound_base = (
+            center[0] + rng.uniform(-radius * 0.72, radius * 0.72),
+            center[1],
+            center[2] + rng.uniform(-radius * 0.48, radius * 0.52),
+        )
+        _add_karst_foot_mound(scene, mound_base, radius * rng.uniform(0.65, 1.05), height * rng.uniform(0.35, 0.55), stone, moss, rng)
+
     for i in range(count):
-        angle = math.tau * i / count + rng.uniform(-0.45, 0.45)
-        dist = rng.uniform(0.0, radius * 0.75)
+        if i == 0:
+            angle = rng.uniform(-0.22, 0.22)
+            dist = rng.uniform(0.0, radius * 0.16)
+            h = height * rng.uniform(0.92, 1.04)
+            r = radius * rng.uniform(0.50, 0.62)
+        else:
+            angle = math.tau * i / count + rng.uniform(-0.55, 0.55)
+            dist = rng.uniform(radius * 0.12, radius * 0.82)
+            h = height * rng.uniform(0.54, 0.90)
+            r = radius * rng.uniform(0.30, 0.52)
+
         base = (
             center[0] + math.cos(angle) * dist,
             center[1],
             center[2] + math.sin(angle) * dist,
         )
-        h = height * rng.uniform(0.62, 1.06)
-        r = radius * rng.uniform(0.28, 0.55)
+
+        _add_karst_foot_mound(scene, base, r * rng.uniform(0.95, 1.30), h * rng.uniform(0.30, 0.44), stone, moss, rng)
         _add_rock_pillar(scene, base, h, r, stone, rng)
+        _add_soft_karst_grooves(scene, base, h, r, stone_dark, rng)
+        _add_karst_vegetation(scene, base, h, r, moss, leaf, leaf_light, rng)
 
-        # Rãnh tối trên đá.
-        for _ in range(3):
-            groove_angle = rng.random() * math.tau
-            x = base[0] + math.cos(groove_angle) * r * 0.88
-            z = base[2] + math.sin(groove_angle) * r * 0.88
-            scene.add_box_between((x, base[1] + h * 0.18, z), (x, base[1] + h * 0.78, z), 0.035, stone_dark, width=0.040)
 
-        # Bụi cây/mảng rêu bám trên núi.
-        for _ in range(3):
-            ledge_angle = rng.random() * math.tau
-            ledge_y = base[1] + h * rng.uniform(0.28, 0.82)
-            ledge = (
-                base[0] + math.cos(ledge_angle) * r * rng.uniform(0.45, 0.95),
-                ledge_y,
-                base[2] + math.sin(ledge_angle) * r * rng.uniform(0.45, 0.95),
-            )
-            _add_leaf_cluster(scene, ledge, rng.uniform(0.22, 0.42), rng.randint(8, 14), leaf, leaf_light, rng)
-            scene.add_box((ledge[0], ledge[1] - 0.08, ledge[2]), (0.18, 0.035, 0.14), moss)
+def _add_karst_foot_mound(
+    scene: SceneMesh,
+    base: Vec3,
+    radius: float,
+    height: float,
+    stone: int,
+    moss: int,
+    rng: Random,
+) -> None:
+    """Mảng đá chân núi thấp, bo tròn để cụm núi không còn dựng như cọc."""
+    mound_center = (
+        base[0] + rng.uniform(-0.05, 0.05) * radius,
+        base[1] + max(0.13, height * rng.uniform(0.10, 0.16)),
+        base[2] + rng.uniform(-0.05, 0.05) * radius,
+    )
+    mound_radii = (
+        radius * rng.uniform(1.25, 1.85),
+        max(0.22, height * rng.uniform(0.10, 0.16)),
+        radius * rng.uniform(0.95, 1.45),
+    )
+    _add_irregular_ellipsoid(
+        scene,
+        mound_center,
+        mound_radii,
+        stone,
+        rng=rng,
+        segments=14,
+        rings=6,
+        wobble=0.11,
+        squash_bottom=0.34,
+    )
+
+    # Rêu thấp ở chân núi, dạng mảng mềm thay vì chấm vuông.
+    for _ in range(1):
+        a = rng.uniform(0.0, math.tau)
+        p = (
+            mound_center[0] + math.cos(a) * mound_radii[0] * rng.uniform(0.34, 0.82),
+            mound_center[1] + mound_radii[1] * rng.uniform(0.10, 0.52),
+            mound_center[2] + math.sin(a) * mound_radii[2] * rng.uniform(0.34, 0.82),
+        )
+        _add_moss_blob(scene, p, (radius * rng.uniform(0.08, 0.15), 0.028, radius * rng.uniform(0.06, 0.12)), moss, rng)
+
+
+def _add_soft_karst_grooves(scene: SceneMesh, base: Vec3, height: float, radius: float, stone_dark: int, rng: Random) -> None:
+    """Rãnh đá cong nhẹ; tránh các đường thẳng đứng làm núi bị đơ."""
+    for _ in range(rng.randint(2, 3)):
+        a = rng.uniform(0.0, math.tau)
+        side = (math.cos(a), math.sin(a))
+        y0 = base[1] + height * rng.uniform(0.14, 0.26)
+        y1 = base[1] + height * rng.uniform(0.58, 0.86)
+        r0 = radius * rng.uniform(0.74, 0.98)
+        r1 = radius * rng.uniform(0.38, 0.70)
+        start = (base[0] + side[0] * r0, y0, base[2] + side[1] * r0)
+        end = (
+            base[0] + side[0] * r1 + rng.uniform(-0.08, 0.08) * radius,
+            y1,
+            base[2] + side[1] * r1 + rng.uniform(-0.08, 0.08) * radius,
+        )
+        _add_curved_frustum(
+            scene,
+            start,
+            end,
+            radius * rng.uniform(0.010, 0.016),
+            radius * rng.uniform(0.006, 0.011),
+            stone_dark,
+            rng=rng,
+            bend=radius * rng.uniform(0.05, 0.11),
+            steps=4,
+            segments=6,
+        )
+
+
+def _add_karst_vegetation(
+    scene: SceneMesh,
+    base: Vec3,
+    height: float,
+    radius: float,
+    moss: int,
+    leaf: int,
+    leaf_light: int,
+    rng: Random,
+) -> None:
+    """Cây/rêu bám sườn núi để nền sau rậm rạp hơn nhưng vẫn nhẹ file."""
+    for _ in range(rng.randint(2, 3)):
+        t = rng.uniform(0.18, 0.78)
+        a = rng.uniform(0.0, math.tau)
+        side = (math.cos(a), math.sin(a))
+        ledge_radius = radius * (1.02 - 0.52 * t) * rng.uniform(0.72, 1.04)
+        ledge = (
+            base[0] + side[0] * ledge_radius,
+            base[1] + height * t,
+            base[2] + side[1] * ledge_radius,
+        )
+        _add_leaf_cluster(scene, ledge, rng.uniform(0.18, 0.32), rng.randint(6, 10), leaf, leaf_light, rng)
+        _add_moss_blob(scene, (ledge[0], ledge[1] - 0.07, ledge[2]), (radius * 0.14, 0.030, radius * 0.09), moss, rng)
+
+    # Tán nhỏ trên vai/đỉnh thấp để phá đường silhouette thẳng.
+    for _ in range(1):
+        t = rng.uniform(0.62, 0.88)
+        a = rng.uniform(0.0, math.tau)
+        side = (math.cos(a), math.sin(a))
+        cap_radius = radius * (0.70 - 0.36 * t) * rng.uniform(0.65, 0.95)
+        p = (base[0] + side[0] * cap_radius, base[1] + height * t, base[2] + side[1] * cap_radius)
+        _add_leaf_cluster(scene, p, rng.uniform(0.16, 0.26), rng.randint(6, 9), leaf_light, leaf, rng)
 
 
 def _add_rock_pillar(scene: SceneMesh, base: Vec3, height: float, radius: float, material: int, rng: Random) -> None:
-    segments = 10
-    levels = 7
-    rings: list[list[Vec3]] = []
+    """Núi đá vôi bo mềm: nhiều ring, chân loe, vai cong, normal mượt.
+
+    Giữ logic tower-karst phía sau nhà nhưng dùng vertex chung + normal hướng tâm
+    để bề mặt không còn bị faceted/cứng như các cột add_quad riêng lẻ.
+    """
+    segments = 18
+    levels = 13
+    rings: list[list[int]] = []
+    centers: list[Vec3] = []
+    out = scene.indices_by_material[material]
 
     phase = rng.random() * math.tau
+    phase2 = rng.random() * math.tau
+    bend_x = rng.uniform(-0.13, 0.14) * radius
+    bend_z = rng.uniform(-0.11, 0.13) * radius
+    lean_x = rng.uniform(-0.10, 0.10) * radius
+    lean_z = rng.uniform(-0.10, 0.10) * radius
+    x_scale = rng.uniform(0.88, 1.18)
+    z_scale = rng.uniform(0.82, 1.12)
+
+    def push_vertex(pos: Vec3, ring_center: Vec3, uv: tuple[float, float]) -> int:
+        n = v_norm((pos[0] - ring_center[0], 0.16, pos[2] - ring_center[2]))
+        idx = len(scene.positions)
+        scene.positions.append(pos)
+        scene.normals.append(n)
+        scene.texcoords.append(uv)
+        return idx
+
     for level in range(levels):
         t = level / (levels - 1)
         y = base[1] + height * t
-        taper = (1.0 - 0.72 * t) * (1.0 + 0.10 * math.sin(t * math.tau + phase))
-        ring_center_x = base[0] + math.sin(t * math.pi * 1.4 + phase) * radius * 0.12
-        ring_center_z = base[2] + math.cos(t * math.pi * 1.1 + phase) * radius * 0.10
-        ring: list[Vec3] = []
+        smooth = t * t * (3.0 - 2.0 * t)
+
+        # Dáng karst: chân nở, giữa hơi thắt, vai có bụng.
+        # Bản v9 siết nhẹ thêm phần crown/top để đỉnh thanh và mềm hơn,
+        # không còn cảm giác mặt cắt phẳng/nặng ở phía trên.
+        lower_bulge = 0.16 * math.exp(-((t - 0.25) / 0.18) ** 2)
+        shoulder_bulge = 0.10 * math.exp(-((t - 0.58) / 0.16) ** 2)
+        taper = 1.04 - 0.58 * smooth + lower_bulge + shoulder_bulge
+        taper *= 1.0 - 0.10 * t * t
+        if t > 0.70:
+            tip_t = (t - 0.70) / 0.30
+            tip_smooth = tip_t * tip_t * (3.0 - 2.0 * tip_t)
+            taper *= 1.0 - 0.42 * tip_smooth
+        taper = max(0.135, taper)
+
+        # Tim núi cong nhẹ theo chiều cao để silhouette không còn cột thẳng.
+        ring_center = (
+            base[0] + math.sin(t * math.pi + phase) * bend_x + lean_x * t,
+            y,
+            base[2] + math.cos(t * math.pi * 0.92 + phase * 0.8) * bend_z + lean_z * t,
+        )
+        centers.append(ring_center)
+
+        ring: list[int] = []
         for i in range(segments):
             angle = math.tau * i / segments
-            rough = 0.80 + 0.28 * rng.random() + 0.12 * math.sin(angle * 3.0 + phase)
-            r = radius * taper * rough
-            ring.append((ring_center_x + math.cos(angle) * r, y, ring_center_z + math.sin(angle) * r))
+            layered_noise = (
+                0.075 * math.sin(angle * 2.0 + phase + t * 2.6)
+                + 0.045 * math.sin(angle * 5.0 + phase2 + level * 0.55)
+                + 0.026 * math.sin(angle * 9.0 + phase * 1.3)
+            )
+            rough = 1.0 + layered_noise + rng.uniform(-0.014, 0.014)
+            rx = radius * taper * x_scale * rough
+            rz = radius * taper * z_scale * (1.0 + layered_noise * 0.72)
+            if t < 0.18:
+                rx *= 1.0 + (0.18 - t) * 0.60
+                rz *= 1.0 + (0.18 - t) * 0.50
+            # Mép ring lên xuống rất nhẹ để đỉnh/chân không cắt quá phẳng.
+            y_jitter = rng.uniform(-0.010, 0.010) * height * (0.45 + 0.55 * (1.0 - t))
+            if t > 0.78:
+                tip_rim_t = (t - 0.78) / 0.22
+                y_jitter += radius * 0.026 * tip_rim_t * tip_rim_t * math.sin(angle * 3.0 + phase2)
+            pos = (ring_center[0] + math.cos(angle) * rx, y + y_jitter, ring_center[2] + math.sin(angle) * rz)
+            ring.append(push_vertex(pos, ring_center, (i / segments, t * 1.55)))
         rings.append(ring)
 
     for level in range(levels - 1):
         for i in range(segments):
             j = (i + 1) % segments
-            scene.add_quad(rings[level][i], rings[level][j], rings[level + 1][j], rings[level + 1][i], material)
+            a = rings[level][i]
+            b = rings[level][j]
+            c = rings[level + 1][j]
+            d = rings[level + 1][i]
+            out.extend([a, b, c, a, c, d])
 
-    # Nắp đỉnh gồ ghề.
-    top_center = (base[0], base[1] + height, base[2])
+    # Nắp chân để không hở khi xoay thấp.
+    bottom_center = (centers[0][0], base[1] - 0.012, centers[0][2])
+    bottom_idx = len(scene.positions)
+    scene.positions.append(bottom_center)
+    scene.normals.append((0.0, -1.0, 0.0))
+    scene.texcoords.append((0.5, 0.0))
     for i in range(segments):
         j = (i + 1) % segments
-        scene.add_triangle(top_center, rings[-1][i], rings[-1][j], material)
+        out.extend([bottom_idx, rings[0][j], rings[0][i]])
+
+    # Bản v9: đỉnh núi được làm nhẹ hơn nữa bằng cap bo 2 tầng.
+    # Thay vì kéo thẳng lên một chóp cao, phần top thu dần qua 2 vòng nhỏ
+    # rồi chốt bằng tip thấp, giúp silhouette mềm hơn và không bị mặt cắt phẳng.
+    # Chỉ chỉnh phần cap đỉnh, logic thân núi/scene hiện tại giữ nguyên.
+    top_ring = rings[-1]
+    top_center = centers[-1]
+
+    cap_rings: list[list[int]] = []
+    cap_specs = [
+        (0.58, radius * 0.024, 0.045, 1.64),
+        (0.24, radius * 0.045, 0.026, 1.74),
+    ]
+    previous_center = top_center
+    for ring_index, (shrink, lift, wobble, v_coord) in enumerate(cap_specs):
+        cap_center = (
+            top_center[0] + math.sin(phase + ring_index * 0.7) * radius * 0.010,
+            top_center[1] + lift,
+            top_center[2] + math.cos(phase2 + ring_index * 0.5) * radius * 0.010,
+        )
+        cap_ring: list[int] = []
+        for i, top_idx in enumerate(top_ring):
+            angle = math.tau * i / segments
+            top_pos = scene.positions[top_idx]
+            dx = top_pos[0] - top_center[0]
+            dz = top_pos[2] - top_center[2]
+            local_shrink = shrink * (1.0 + wobble * math.sin(angle * 3.0 + phase2 + ring_index))
+            y_soft = radius * 0.004 * math.sin(angle * 4.0 + phase + ring_index)
+            pos = (
+                cap_center[0] + dx * local_shrink,
+                cap_center[1] + y_soft,
+                cap_center[2] + dz * local_shrink,
+            )
+            idx = len(scene.positions)
+            scene.positions.append(pos)
+            scene.normals.append(v_norm((pos[0] - cap_center[0], 0.34, pos[2] - cap_center[2])))
+            scene.texcoords.append((i / segments, v_coord))
+            cap_ring.append(idx)
+        cap_rings.append(cap_ring)
+        previous_center = cap_center
+
+    previous_ring = top_ring
+    for cap_ring in cap_rings:
+        for i in range(segments):
+            j = (i + 1) % segments
+            a = previous_ring[i]
+            b = previous_ring[j]
+            c = cap_ring[j]
+            d = cap_ring[i]
+            out.extend([a, b, c, a, c, d])
+        previous_ring = cap_ring
+
+    peak = (
+        previous_center[0] + rng.uniform(-0.006, 0.006) * radius,
+        top_center[1] + radius * rng.uniform(0.052, 0.066),
+        previous_center[2] + rng.uniform(-0.006, 0.006) * radius,
+    )
+    peak_idx = len(scene.positions)
+    scene.positions.append(peak)
+    scene.normals.append((0.0, 1.0, 0.0))
+    scene.texcoords.append((0.5, 1.0))
+    for i in range(segments):
+        j = (i + 1) % segments
+        out.extend([peak_idx, previous_ring[i], previous_ring[j]])

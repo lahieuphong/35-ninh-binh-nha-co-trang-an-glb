@@ -4,7 +4,7 @@ import json
 import struct
 from pathlib import Path
 
-from .scene import SceneMesh, Vec3
+from .scene import SceneMesh, Vec2, Vec3
 
 GLB_MAGIC = 0x46546C67      # b"glTF"
 GLB_VERSION = 2
@@ -17,6 +17,10 @@ UNSIGNED_INT = 5125
 ARRAY_BUFFER = 34962
 ELEMENT_ARRAY_BUFFER = 34963
 TRIANGLES = 4
+
+REPEAT = 10497
+LINEAR = 9729
+LINEAR_MIPMAP_LINEAR = 9987
 
 
 def _pad4(data: bytes, pad_byte: bytes) -> bytes:
@@ -36,6 +40,10 @@ def _pack_vec3(values: list[Vec3]) -> bytes:
     return b"".join(struct.pack("<3f", *v) for v in values)
 
 
+def _pack_vec2(values: list[Vec2]) -> bytes:
+    return b"".join(struct.pack("<2f", *v) for v in values)
+
+
 def _pack_indices(indices: list[int]) -> tuple[bytes, int]:
     if max(indices) <= 65535:
         return b"".join(struct.pack("<H", i) for i in indices), UNSIGNED_SHORT
@@ -49,8 +57,21 @@ def _bounds(positions: list[Vec3]) -> tuple[list[float], list[float]]:
     )
 
 
+def _texture_mime_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".png":
+        return "image/png"
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    raise ValueError(f"Texture phải là PNG/JPG, không hỗ trợ: {path}")
+
+
 def write_scene_glb(scene: SceneMesh, output_path: str | Path) -> Path:
-    """Ghi SceneMesh nhiều material ra file GLB thuần Python."""
+    """Ghi SceneMesh nhiều material ra file GLB thuần Python.
+
+    Writer này hỗ trợ cả baseColorTexture và normalTexture. Ảnh texture được
+    nhúng thẳng vào BIN chunk của GLB, nên file output có thể mở độc lập.
+    """
     scene.validate()
 
     output_path = Path(output_path)
@@ -58,6 +79,10 @@ def write_scene_glb(scene: SceneMesh, output_path: str | Path) -> Path:
 
     positions = list(scene.positions)
     normals = list(scene.normals)
+
+    uses_textures = any(m.base_color_texture or m.normal_texture for m in scene.materials)
+    include_texcoords = bool(scene.texcoords) or uses_textures
+    texcoords = list(scene.texcoords) if scene.texcoords else [(0.0, 0.0)] * len(positions)
 
     position_bytes = _pack_vec3(positions)
     normal_bytes = _pack_vec3(normals)
@@ -102,6 +127,30 @@ def write_scene_glb(scene: SceneMesh, output_path: str | Path) -> Path:
         },
     ]
 
+    texcoord_accessor_index: int | None = None
+    if include_texcoords:
+        texcoord_bytes = _pack_vec2(texcoords)
+        offset_texcoords = _append_aligned(bin_blob, texcoord_bytes)
+        texcoord_buffer_view = len(buffer_views)
+        buffer_views.append(
+            {
+                "buffer": 0,
+                "byteOffset": offset_texcoords,
+                "byteLength": len(texcoord_bytes),
+                "target": ARRAY_BUFFER,
+            }
+        )
+        texcoord_accessor_index = len(accessors)
+        accessors.append(
+            {
+                "bufferView": texcoord_buffer_view,
+                "byteOffset": 0,
+                "componentType": FLOAT,
+                "count": len(texcoords),
+                "type": "VEC2",
+            }
+        )
+
     primitives: list[dict] = []
 
     for material_index, indices in scene.indices_by_material.items():
@@ -132,36 +181,116 @@ def write_scene_glb(scene: SceneMesh, output_path: str | Path) -> Path:
             }
         )
 
+        attributes = {
+            "POSITION": 0,
+            "NORMAL": 1,
+        }
+        if texcoord_accessor_index is not None:
+            attributes["TEXCOORD_0"] = texcoord_accessor_index
+
         primitives.append(
             {
-                "attributes": {
-                    "POSITION": 0,
-                    "NORMAL": 1,
-                },
+                "attributes": attributes,
                 "indices": accessor_index,
                 "material": material_index,
                 "mode": TRIANGLES,
             }
         )
 
-    gltf_materials: list[dict] = []
-    for material in scene.materials:
-        gltf_materials.append(
+    samplers: list[dict] = []
+    images: list[dict] = []
+    textures: list[dict] = []
+    texture_cache: dict[Path, int] = {}
+
+    if uses_textures:
+        samplers.append(
             {
-                "name": material.name,
-                "doubleSided": material.double_sided,
-                "pbrMetallicRoughness": {
-                    "baseColorFactor": list(material.color),
-                    "metallicFactor": material.metallic,
-                    "roughnessFactor": material.roughness,
-                },
+                "magFilter": LINEAR,
+                "minFilter": LINEAR_MIPMAP_LINEAR,
+                "wrapS": REPEAT,
+                "wrapT": REPEAT,
             }
         )
+
+    def register_texture(texture_path: str | None) -> int | None:
+        if not texture_path:
+            return None
+        path = Path(texture_path)
+        if not path.is_absolute():
+            path = path.resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"Không tìm thấy texture: {path}")
+
+        key = path.resolve()
+        if key in texture_cache:
+            return texture_cache[key]
+
+        data = path.read_bytes()
+        offset_image = _append_aligned(bin_blob, data)
+        buffer_view_index = len(buffer_views)
+        buffer_views.append(
+            {
+                "buffer": 0,
+                "byteOffset": offset_image,
+                "byteLength": len(data),
+            }
+        )
+
+        image_index = len(images)
+        images.append(
+            {
+                "name": path.stem,
+                "mimeType": _texture_mime_type(path),
+                "bufferView": buffer_view_index,
+            }
+        )
+
+        texture_index = len(textures)
+        textures.append(
+            {
+                "sampler": 0 if samplers else None,
+                "source": image_index,
+            }
+        )
+        texture_cache[key] = texture_index
+        return texture_index
+
+    gltf_materials: list[dict] = []
+    for material in scene.materials:
+        pbr = {
+            "baseColorFactor": list(material.color),
+            "metallicFactor": material.metallic,
+            "roughnessFactor": material.roughness,
+        }
+
+        base_texture_index = register_texture(material.base_color_texture)
+        if base_texture_index is not None:
+            pbr["baseColorTexture"] = {"index": base_texture_index}
+
+        gltf_material = {
+            "name": material.name,
+            "doubleSided": material.double_sided,
+            "pbrMetallicRoughness": pbr,
+        }
+
+        # glTF chỉ dùng kênh alpha của baseColorFactor/texture khi alphaMode được bật.
+        # Tự động đặt BLEND cho vật liệu có alpha < 1 để nước/đáy hồ có cảm giác trong suốt.
+        if len(material.color) >= 4 and material.color[3] < 0.999:
+            gltf_material["alphaMode"] = "BLEND"
+
+        normal_texture_index = register_texture(material.normal_texture)
+        if normal_texture_index is not None:
+            gltf_material["normalTexture"] = {
+                "index": normal_texture_index,
+                "scale": material.normal_scale,
+            }
+
+        gltf_materials.append(gltf_material)
 
     gltf_json = {
         "asset": {
             "version": "2.0",
-            "generator": "35-ninh-binh-nha-co-trang-an-glb pure-python procedural scene writer",
+            "generator": "35-ninh-binh-nha-co-trang-an-glb pure-python textured scene writer",
         },
         "scene": 0,
         "scenes": [
@@ -191,6 +320,17 @@ def write_scene_glb(scene: SceneMesh, output_path: str | Path) -> Path:
         "bufferViews": buffer_views,
         "accessors": accessors,
     }
+
+    if samplers:
+        gltf_json["samplers"] = samplers
+    if images:
+        gltf_json["images"] = images
+    if textures:
+        # Loại bỏ sampler None nếu không dùng texture sampler.
+        gltf_json["textures"] = [
+            {k: v for k, v in texture.items() if v is not None}
+            for texture in textures
+        ]
 
     json_bytes = json.dumps(gltf_json, separators=(",", ":")).encode("utf-8")
     json_chunk = _pad4(json_bytes, b" ")
